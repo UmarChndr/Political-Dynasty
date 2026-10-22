@@ -6,9 +6,6 @@
   <title>Peta Dinasti Politik Indonesia - Pilkada 2024/2025</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Apache ECharts & ECharts-GL untuk Peta 3D Ekstrusi -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts-gl/2.0.9/echarts-gl.min.js"></script>
   <!-- SheetJS untuk membaca file 2025 07 13 Hubungan Kekerabatan.xlsx secara langsung -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <!-- Google Fonts: Plus Jakarta Sans -->
@@ -18,12 +15,12 @@
       font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
       background-color: #fbfaf8;
       color: #1c1917;
-      overflow-x: hidden;
+      overflow: hidden;
     }
     .glass-card {
       background: rgba(245, 243, 239, 0.92);
       backdrop-filter: blur(12px);
-      border: 1px solid rgba(231, 227, 219, 0.9);
+      border: 1px solid rgba(231, 227, 219, 0.95);
       box-shadow: 0 12px 32px -8px rgba(28, 25, 23, 0.08);
     }
     .custom-scroll::-webkit-scrollbar {
@@ -44,13 +41,16 @@
 </head>
 <body class="relative w-screen h-screen overflow-hidden select-none">
 
-  <!-- KANVAS PETA 3D INDONESIA -->
-  <div id="map-container" class="absolute inset-0 w-full h-full z-0"></div>
+  <!-- KANVAS PETA DIORAMA 3D INDONESIA -->
+  <canvas id="map-canvas" class="absolute inset-0 w-full h-full z-0 cursor-grab active:cursor-grabbing"></canvas>
+
+  <!-- TOOLTIP MELAYANG SAAT HOVER PETA -->
+  <div id="map-tooltip" class="fixed z-30 pointer-events-none hidden bg-stone-900/95 text-stone-50 px-3.5 py-2.5 rounded-xl shadow-xl border border-stone-700 text-xs max-w-xs transition-opacity"></div>
 
   <!-- HEADER KIRI ATAS -->
   <div class="absolute top-6 left-8 z-10 max-w-md pointer-events-none">
     <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#f3e5df] text-[#9a3412] text-xs font-bold tracking-wide mb-3 pointer-events-auto">
-      <span>PILKADA SERENTAK 2024–2025 · DATA KEKERABATAN</span>
+      <span>PILKADA SERENTAK 2024/2025 · DATA KEKERABATAN</span>
     </div>
     <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight text-stone-900 leading-[1.08] mb-3">
       Peta Dinasti Politik Indonesia
@@ -79,7 +79,7 @@
     </div>
 
     <!-- Baris Tombol Filter & Muat Excel -->
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 flex-wrap justify-end">
       <div class="glass-card rounded-xl p-1 flex items-center gap-1 text-xs font-semibold">
         <button id="btn-mode-all" onclick="setMetricMode('all')" class="px-3 py-1.5 rounded-lg bg-[#c2410c] text-white transition">
           Semua Kandidat (649)
@@ -96,11 +96,15 @@
         <span id="excel-status-label">Muat Excel (.xlsx)</span>
         <input type="file" id="excel-file-input" accept=".xlsx,.xls" class="hidden" onchange="handleExcelUpload(event)" />
       </label>
+
+      <button onclick="resetMapView()" class="glass-card rounded-xl px-3 py-2 text-xs font-bold text-stone-700 hover:bg-stone-200/80 transition" title="Reset Posisi Peta">
+        Reset Peta
+      </button>
     </div>
   </div>
 
   <!-- PANEL KIRI BAWAH: TOP 5 PROVINSI -->
-  <div class="absolute bottom-6 left-8 z-10 w-[360px] sm:w-[390px] glass-card rounded-3xl p-5">
+  <div class="absolute bottom-6 left-8 z-10 w-[350px] sm:w-[385px] glass-card rounded-3xl p-5">
     <div class="flex items-center justify-between mb-3.5">
       <h2 class="text-base font-extrabold text-stone-900">Top 5 provinsi</h2>
       <span class="text-[11px] font-medium text-stone-500" id="top5-subtitle">Total kandidat · terpilih</span>
@@ -111,12 +115,12 @@
   <!-- CATATAN SUMBER TENGAH BAWAH -->
   <div class="absolute bottom-5 left-1/2 -translate-x-1/2 z-10 text-center max-w-md pointer-events-none hidden lg:block">
     <p class="text-[11px] text-stone-500 leading-relaxed">
-      Sumber: Dataset Hubungan Kekerabatan Pilkada 2024/2025 (649 kandidat, 1.046 relasi kekerabatan pada 371 Dapil). Tinggi provinsi sebanding jumlah dinasti politik.
+      Sumber: Dataset Hubungan Kekerabatan Pilkada 2024/2025 (649 kandidat, 1.046 relasi kekerabatan pada 371 Dapil). Tinggi pulau sebanding jumlah dinasti politik.
     </p>
   </div>
 
   <!-- PANEL KANAN BAWAH: PROVINSI TERPILIH -->
-  <div class="absolute bottom-6 right-8 z-10 w-[360px] sm:w-[390px] glass-card rounded-3xl p-6">
+  <div class="absolute bottom-6 right-8 z-10 w-[350px] sm:w-[385px] glass-card rounded-3xl p-6">
     <div class="text-xs font-medium text-stone-500">Provinsi terpilih</div>
     <h2 id="sel-prov-name" class="text-2xl font-extrabold text-stone-900 mt-0.5">Jawa Timur</h2>
     <div class="mt-1 flex items-baseline gap-1.5 flex-wrap">
@@ -136,7 +140,6 @@
         <div class="h-2 w-full bg-stone-200 rounded-full overflow-hidden">
           <div id="sel-prov-win-bar" class="h-full bg-[#c2410c] rounded-full transition-all duration-500" style="width: 43.1%"></div>
         </div>
-        <!-- Penanda Rata-rata Nasional (40.2%) -->
         <div class="absolute -top-1 left-[40.2%] -translate-x-1/2 flex flex-col items-center">
           <div class="w-0.5 h-4 bg-stone-800"></div>
         </div>
@@ -163,7 +166,7 @@
     </button>
   </div>
 
-  <!-- MODAL / DRAWER DETAIL KABUPATEN/KOTA & SILSILAH DINASTI -->
+  <!-- MODAL DETAIL KABUPATEN/KOTA & SILSILAH DINASTI -->
   <div id="detail-modal" class="fixed inset-0 z-50 hidden bg-stone-900/50 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6">
     <div class="bg-[#fbfaf8] border border-stone-300 rounded-3xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden select-text">
       
@@ -175,11 +178,11 @@
             <span class="text-xs font-semibold text-stone-500" id="modal-prov-stats">31 Dapil · 58 Kandidat · 25 Menang</span>
           </div>
           <h3 id="modal-prov-title" class="text-2xl font-extrabold text-stone-900 mt-1">
-            Daftar Kab/Kota & Silsilah Dinasti Politik — Jawa Timur
+            Daftar Kab/Kota & Silsilah Dinasti Politik: Jawa Timur
           </h3>
         </div>
         <button onclick="closeDetailModal()" class="self-end sm:self-auto px-4 py-2 rounded-full bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold transition">
-          ✕ Tutup Peta Detail
+          ✕ Tutup Daftar Detail
         </button>
       </div>
 
@@ -215,376 +218,81 @@
 
   <script>
     // =========================================================================
-    // 1. DATA RINGKASAN 38 PROVINSI & SAMPEL LENGKAP DARI FILE EXCEL ASLI
-    //    (Juga mendukung pembacaan penuh 1.046 baris otomatis dari file .xlsx)
+    // 1. DATABASE AWAL 38 PROVINSI & KOORDINAT PUSAT UNTUK PIN DIORAMA 3D
     // =========================================================================
+    const PROV_COORDS = {
+      "Aceh": [96.8, 4.3],
+      "Sumatera Utara": [99.0, 2.1],
+      "Sumatera Barat": [100.6, -0.9],
+      "Riau": [101.8, 0.5],
+      "Kepulauan Riau": [104.5, 1.0],
+      "Jambi": [102.7, -1.6],
+      "Sumatera Selatan": [104.2, -3.2],
+      "Bengkulu": [102.3, -3.8],
+      "Lampung": [105.0, -4.9],
+      "Kepulauan Bangka Belitung": [106.5, -2.5],
+      "Banten": [106.1, -6.4],
+      "DKI Jakarta": [106.85, -6.2],
+      "Jawa Barat": [107.6, -6.9],
+      "Jawa Tengah": [110.1, -7.2],
+      "DI Yogyakarta": [110.4, -7.9],
+      "Jawa Timur": [112.7, -7.7],
+      "Bali": [115.2, -8.4],
+      "Nusa Tenggara Barat": [117.4, -8.6],
+      "Nusa Tenggara Timur": [121.8, -9.4],
+      "Kalimantan Barat": [110.5, 0.0],
+      "Kalimantan Tengah": [113.8, -1.8],
+      "Kalimantan Selatan": [115.4, -3.0],
+      "Kalimantan Timur": [116.8, 0.5],
+      "Kalimantan Utara": [116.5, 3.2],
+      "Sulawesi Utara": [124.5, 1.0],
+      "Gorontalo": [122.5, 0.7],
+      "Sulawesi Tengah": [120.8, -1.2],
+      "Sulawesi Barat": [119.2, -2.5],
+      "Sulawesi Selatan": [120.0, -4.2],
+      "Sulawesi Tenggara": [122.2, -4.2],
+      "Maluku Utara": [127.8, 0.8],
+      "Maluku": [129.0, -3.5],
+      "Papua Barat Daya": [131.5, -1.2],
+      "Papua Barat": [133.5, -2.0],
+      "Papua": [138.5, -2.6],
+      "Papua Tengah": [136.5, -4.0],
+      "Papua Pegunungan": [139.5, -4.2],
+      "Papua Selatan": [139.5, -7.0]
+    };
+
     const INITIAL_PROVINCE_DATA = {
-      "Jawa Timur": {
-        total: 58, menang: 25, kalah: 33, dapilCount: 31, kabKotaCount: 30, topRel: "ANAK (25 relasi)",
-        dapils: [
-          { dapil: "Prov. Jawa Timur", candidates: [
-            { nama: "KHOFIFAH INDAR PARAWANSA", jk: "P", thn: 1965, jabatanCalon: "GUBERNUR", status: "MENANG", jabatanSaatIni: "GUBERNUR JAWA TIMUR 2025-2030", keluarga: "PARAWANSA", relasi: [
-              { kerabat: "ALI MANSHUR SHIDDIQ", hubungan: "KEPONAKAN", jabatanKerabat: "ANGGOTA DPRD JATIM 2019-2024", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Banyuwangi", candidates: [
-            { nama: "IPUK FIESTIANDANI AZWAR ANAS", jk: "P", thn: 1974, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI BANYUWANGI 2025-2030", keluarga: "AZWAR ANAS", relasi: [
-              { kerabat: "ABDULLAH AZWAR ANAS", hubungan: "SUAMI/ISTRI", jabatanKerabat: "BUPATI BANYUWANGI 2010-2021; MENPAN-RB 2022-2024", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Kediri", candidates: [
-            { nama: "HANINDHITO HIMAWAN PRAMANA", jk: "L", thn: 1992, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI KEDIRI 2025-2030", keluarga: "PRAMONO ANUNG", relasi: [
-              { kerabat: "PRAMONO ANUNG WIBOWO", hubungan: "ANAK", jabatanKerabat: "SEKRETARIS KABINET RI 2015-2024; GUBERNUR DKI JAKARTA 2025-2030", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Trenggalek", candidates: [
-            { nama: "MOCHAMAD NUR ARIFIN", jk: "L", thn: 1990, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI TRENGGALEK 2025-2030", keluarga: "ARIFIN", relasi: [
-              { kerabat: "NOVITA HARDINI", hubungan: "SUAMI/ISTRI", jabatanKerabat: "ANGGOTA DPR-RI 2024-2029", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Gresik", candidates: [
-            { nama: "FANDI AKHMAD YANI", jk: "L", thn: 1985, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI GRESIK 2025-2030", keluarga: "YANI", relasi: [
-              { kerabat: "NILA YANI HARDIYANTI", hubungan: "ADIK/KAKAK", jabatanKerabat: "ANGGOTA DPR-RI 2024-2029", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Sidoarjo", candidates: [
-            { nama: "SUBANDI", jk: "L", thn: 1972, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI SIDOARJO 2025-2030", keluarga: "SUBANDI", relasi: [
-              { kerabat: "SRISETYOWATI", hubungan: "SUAMI/ISTRI", jabatanKerabat: "ANGGOTA DPRD KAB. SIDOARJO 2024-2029", catatan: "" },
-              { kerabat: "MOCH. DHAMRONI CHUDLORI", hubungan: "ORANG TUA", jabatanKerabat: "ANGGOTA DPRD KAB. SIDOARJO 2024-2029", catatan: "" }
-            ]},
-            { nama: "MIMIK IDAYANA", jk: "P", thn: 1971, jabatanCalon: "WAKIL BUPATI", status: "MENANG", jabatanSaatIni: "WAKIL BUPATI SIDOARJO 2025-2030", keluarga: "RAHMAT", relasi: [
-              { kerabat: "RAHMAT MUHAJIRIN", hubungan: "SUAMI/ISTRI", jabatanKerabat: "ANGGOTA DPR-RI 2019-2024", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Mojokerto", candidates: [
-            { nama: "MUHAMMAD AL BARA", jk: "L", thn: 1986, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI MOJOKERTO 2025-2030", keluarga: "ASEP SAIFUDDIN", relasi: [
-              { kerabat: "ABDUL HALIM ISKANDAR", hubungan: "MENANTU", jabatanKerabat: "MENTERI DESA PDTT 2019-2024", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Jombang", candidates: [
-            { nama: "WARSUBI", jk: "L", thn: 1968, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI JOMBANG 2025-2030", keluarga: "WARSUBI", relasi: [
-              { kerabat: "OCTADella BERYL", hubungan: "ORANG TUA", jabatanKerabat: "ANGGOTA DPRD KAB. JOMBANG 2024-2029", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Probolinggo", candidates: [
-            { nama: "MOHAMMAD HARIS", jk: "L", thn: 1974, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI PROBOLINGGO 2025-2030", keluarga: "ZAINUL HASAN", relasi: [
-              { kerabat: "DIANA SUSANTI", hubungan: "SUAMI/ISTRI", jabatanKerabat: "ANGGOTA DPRD JATIM", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Sumenep", candidates: [
-            { nama: "ACHMAD FAUZI WONGSOJUDO", jk: "L", thn: 1979, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI SUMENEP 2025-2030", keluarga: "SAID ABDULLAH", relasi: [
-              { kerabat: "MH SAID ABDULLAH", hubungan: "KEPONAKAN", jabatanKerabat: "ANGGOTA DPR-RI / KETUA BANGGAR DPR-RI", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kota Kediri", candidates: [
-            { nama: "VINANDA PRAMESWATI", jk: "P", thn: 1998, jabatanCalon: "WALIKOTA", status: "MENANG", jabatanSaatIni: "WALIKOTA KEDIRI 2025-2030", keluarga: "PRAMESWATI", relasi: [
-              { kerabat: "EDDY HERWANTO", hubungan: "ANAK", jabatanKerabat: "KETUA DPRD KOTA KEDIRI", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kota Probolinggo", candidates: [
-            { nama: "AMINUDDIN", jk: "L", thn: 1969, jabatanCalon: "WALIKOTA", status: "MENANG", jabatanSaatIni: "WALIKOTA PROBOLINGGO 2025-2030", keluarga: "AMINUDDIN", relasi: [
-              { kerabat: "EVI ZAINAL ABIDIN", hubungan: "SUAMI/ISTRI", jabatanKerabat: "ANGGOTA DPR-RI / DPRD JATIM", catatan: "" }
-            ]},
-            { nama: "INA DWI LESTARI", jk: "P", thn: 1995, jabatanCalon: "WAKIL WALIKOTA", status: "MENANG", jabatanSaatIni: "WAKIL WALIKOTA PROBOLINGGO 2025-2030", keluarga: "BUCHORI", relasi: [
-              { kerabat: "HM BUCHORI", hubungan: "ANAK", jabatanKerabat: "WALIKOTA PROBOLINGGO 2004-2014", catatan: "" },
-              { kerabat: "RUKMINI BUCHORI", hubungan: "ANAK", jabatanKerabat: "WALIKOTA PROBOLINGGO 2014-2019", catatan: "" }
-            ]}
-          ]}
-        ]
-      },
-      "Sulawesi Selatan": {
-        total: 58, menang: 24, kalah: 34, dapilCount: 23, kabKotaCount: 22, topRel: "ANAK (27 relasi)",
-        dapils: [
-          { dapil: "Prov. Sulawesi Selatan", candidates: [
-            { nama: "ANDI SUDIRMAN SULAIMAN", jk: "L", thn: 1983, jabatanCalon: "GUBERNUR", status: "MENANG", jabatanSaatIni: "GUBERNUR SULAWESI SELATAN 2025-2030", keluarga: "SULAIMAN", relasi: [
-              { kerabat: "ANDI AMRAN SULAIMAN", hubungan: "ADIK/KAKAK", jabatanKerabat: "MENTERI PERTANIAN RI 2014-2019 & 2023-2029", catatan: "DINASTI KLAN SULAIMAN" }
-            ]},
-            { nama: "FATMAWATI RUSDI", jk: "P", thn: 1980, jabatanCalon: "WAKIL GUBERNUR", status: "MENANG", jabatanSaatIni: "WAKIL GUBERNUR SULAWESI SELATAN 2025-2030", keluarga: "RUSDI MASSE", relasi: [
-              { kerabat: "RUSDI MASSE MAPPASESU", hubungan: "SUAMI/ISTRI", jabatanKerabat: "BUPATI SIDRAP 2008-2018; ANGGOTA DPR-RI 2019-2029", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Bone", candidates: [
-            { nama: "ANDI ASMAN SULAIMAN", jk: "L", thn: 1976, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI BONE 2025-2030", keluarga: "SULAIMAN", relasi: [
-              { kerabat: "ANDI AMRAN SULAIMAN", hubungan: "ADIK/KAKAK", jabatanKerabat: "MENTERI PERTANIAN RI", catatan: "ADIK MENTERI PERTANIAN & KAKAK GUBERNUR SULSEL" },
-              { kerabat: "ANDI SUDIRMAN SULAIMAN", hubungan: "ADIK/KAKAK", jabatanKerabat: "GUBERNUR SULAWESI SELATAN", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Gowa", candidates: [
-            { nama: "SITTI HUSNIAH TALENRANG", jk: "P", thn: 1976, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI GOWA 2025-2030", keluarga: "TALENRANG", relasi: [
-              { kerabat: "MUHAMMAD FADIL IMRAN", hubungan: "ADIK/KAKAK", jabatanKerabat: "KABAHARKAM POLRI / KAPOLDA METRO JAYA", catatan: "" }
-            ]},
-            { nama: "DARMAWANGSYAH MUIN", jk: "L", thn: 1976, jabatanCalon: "WAKIL BUPATI", status: "MENANG", jabatanSaatIni: "WAKIL BUPATI GOWA 2025-2030", keluarga: "MUIN", relasi: [
-              { kerabat: "ANDI TENRI INDAH", hubungan: "SUAMI/ISTRI", jabatanKerabat: "ANGGOTA DPRD SULSEL 2024-2029", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Maros", candidates: [
-            { nama: "CHAIDIR SYAM", jk: "L", thn: 1977, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI MAROS 2025-2030", keluarga: "SYAM", relasi: [
-              { kerabat: "ANDI SYAHRIWIJAYA", hubungan: "IPAR", jabatanKerabat: "ANGGOTA DPRD KAB. MAROS", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Barru", candidates: [
-            { nama: "ANDI INA KARTIKA SARI", jk: "P", thn: 1975, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI BARRU 2025-2030", keluarga: "KARTIKA", relasi: [
-              { kerabat: "ANDI TJAJO KARTIKA", hubungan: "ANAK", jabatanKerabat: "ANGGOTA DPRD SULSEL", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kota Makassar", candidates: [
-            { nama: "MUNAFRA ARIFUDDIN", jk: "L", thn: 1975, jabatanCalon: "WALIKOTA", status: "MENANG", jabatanSaatIni: "WALIKOTA MAKASSAR 2025-2030", keluarga: "KALLA / AKSA MAHMUD", relasi: [
-              { kerabat: "AKSA MAHMUD", hubungan: "MENANTU", jabatanKerabat: "WAKIL KETUA MPR RI 2004-2009", catatan: "KEPONAKAN IPAR JUSUF KALLA" },
-              { kerabat: "ERWIN AKSA", hubungan: "IPAR", jabatanKerabat: "ANGGOTA DPR-RI 2024-2029", catatan: "" }
-            ]},
-            { nama: "ALIYAH MUSTIKA ILHAM", jk: "P", thn: 1969, jabatanCalon: "WAKIL WALIKOTA", status: "MENANG", jabatanSaatIni: "WAKIL WALIKOTA MAKASSAR 2025-2030", keluarga: "ILHAM ARIEF SIRAJUDDIN", relasi: [
-              { kerabat: "ILHAM ARIEF SIRAJUDDIN", hubungan: "SUAMI/ISTRI", jabatanKerabat: "WALIKOTA MAKASSAR 2004-2014", catatan: "" }
-            ]}
-          ]}
-        ]
-      },
-      "Jawa Tengah": {
-        total: 41, menang: 22, kalah: 19, dapilCount: 24, kabKotaCount: 23, topRel: "ANAK (17 relasi)",
-        dapils: [
-          { dapil: "Kab. Klaten", candidates: [
-            { nama: "HAMENANG WAJAR ISMOYO", jk: "L", thn: 1988, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI KLATEN 2025-2030", keluarga: "ISMOYO", relasi: [
-              { kerabat: "HARYANTO", hubungan: "ANAK", jabatanKerabat: "KETUA DPRD KLATEN", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Kendal", candidates: [
-            { nama: "DYAH KARTIKA PERMANASARI", jk: "P", thn: 1967, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI KENDAL 2025-2030", keluarga: "MURDOKO", relasi: [
-              { kerabat: "MURDOKO", hubungan: "SUAMI/ISTRI", jabatanKerabat: "KETUA DPRD JAWA TENGAH 2004-2012", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Pekalongan", candidates: [
-            { nama: "FADIA ARAFIQ", jk: "P", thn: 1978, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI PEKALONGAN 2025-2030", keluarga: "ASHRAF", relasi: [
-              { kerabat: "ASHRAF ABU", hubungan: "SUAMI/ISTRI", jabatanKerabat: "ANGGOTA DPR-RI 2024-2029", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Purbalingga", candidates: [
-            { nama: "FAHMI MUHAMMAD HANIF", jk: "L", thn: 1996, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI PURBALINGGA 2025-2030", keluarga: "ROFIK HANANTO", relasi: [
-              { kerabat: "ROFIK HANANTO", hubungan: "ANAK", jabatanKerabat: "ANGGOTA DPR-RI 2019-2029", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Kebumen", candidates: [
-            { nama: "LILIS NURYANI", jk: "P", thn: 1965, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI KEBUMEN 2025-2030", keluarga: "FUAD", relasi: [
-              { kerabat: "MOHAMMAD YAHYA FUAD", hubungan: "SUAMI/ISTRI", jabatanKerabat: "BUPATI KEBUMEN 2016-2018", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Sukoharjo", candidates: [
-            { nama: "ETIK SURYANI", jk: "P", thn: 1963, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI SUKOHARJO 2025-2030", keluarga: "WARDOYO WIJAYA", relasi: [
-              { kerabat: "WARDOYO WIJAYA", hubungan: "SUAMI/ISTRI", jabatanKerabat: "BUPATI SUKOHARJO 2010-2021", catatan: "" }
-            ]}
-          ]}
-        ]
-      },
-      "Sumatera Utara": {
-        total: 36, menang: 13, kalah: 23, dapilCount: 25, kabKotaCount: 24, topRel: "ANAK (14 relasi)",
-        dapils: [
-          { dapil: "Prov. Sumatera Utara", candidates: [
-            { nama: "MUHAMMAD BOBBY AFIF NASUTION", jk: "L", thn: 1991, jabatanCalon: "GUBERNUR", status: "MENANG", jabatanSaatIni: "GUBERNUR SUMATERA UTARA 2025-2030", keluarga: "WIDODO / NASUTION", relasi: [
-              { kerabat: "JOKO WIDODO", hubungan: "MENANTU", jabatanKerabat: "PRESIDEN REPUBLIK INDONESIA 2014-2024", catatan: "" },
-              { kerabat: "GIBRAN RAKABUMING RAKA", hubungan: "IPAR", jabatanKerabat: "WAKIL PRESIDEN REPUBLIK INDONESIA 2024-2029", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Deli Serdang", candidates: [
-            { nama: "ASRI LUDIN TAMBUNAN", jk: "L", thn: 1976, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI DELI SERDANG 2025-2030", keluarga: "TAMBUNAN", relasi: [
-              { kerabat: "AMRI TAMBUNAN", hubungan: "ANAK", jabatanKerabat: "BUPATI DELI SERDANG 2004-2014", catatan: "" },
-              { kerabat: "ASHARI TAMBUNAN", hubungan: "KEPONAKAN", jabatanKerabat: "BUPATI DELI SERDANG 2014-2023; ANGGOTA DPR-RI 2024-2029", catatan: "DINASTI TAMBUNAN DELI SERDANG" }
-            ]}
-          ]},
-          { dapil: "Kab. Labuhan Batu", candidates: [
-            { nama: "MAYA HASMITA", jk: "P", thn: 1979, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI LABUHAN BATU 2025-2030", keluarga: "ERIK ADTRADA", relasi: [
-              { kerabat: "ERIK ADTRADA RITONGA", hubungan: "SUAMI/ISTRI", jabatanKerabat: "BUPATI LABUHAN BATU 2021-2024", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Mandailing Natal", candidates: [
-            { nama: "ATIKA AZMI UTAMMI", jk: "P", thn: 1993, jabatanCalon: "WAKIL BUPATI", status: "MENANG", jabatanSaatIni: "WAKIL BUPATI MANDAILING NATAL 2025-2030", keluarga: "NASUTION", relasi: [
-              { kerabat: "ERWIN EFENDI LUBIS", hubungan: "IPAR", jabatanKerabat: "KETUA DPRD MANDAILING NATAL", catatan: "" }
-            ]}
-          ]}
-        ]
-      },
-      "Jawa Barat": {
-        total: 30, menang: 9, kalah: 21, dapilCount: 19, kabKotaCount: 18, topRel: "ANAK (10 relasi)",
-        dapils: [
-          { dapil: "Kab. Bekasi", candidates: [
-            { nama: "ADE KUSWARA KUNANG", jk: "L", thn: 1993, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI BEKASI 2025-2030", keluarga: "KUNANG", relasi: [
-              { kerabat: "HM KUNANG", hubungan: "ANAK", jabatanKerabat: "KEPALA DESA / TOKOH POLITIK BEKASI", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Indramayu", candidates: [
-            { nama: "NINA AGUSTINA", jk: "P", thn: 1973, jabatanCalon: "BUPATI", status: "KALAH", jabatanSaatIni: "TIDAK ADA", keluarga: "DAI BACHTIAR", relasi: [
-              { kerabat: "DAI BACHTIAR", hubungan: "ANAK", jabatanKerabat: "KAPOLRI 2001-2005", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Bandung Barat", candidates: [
-            { nama: "JEJE RITCHIE ISMAIL", jk: "L", thn: 1983, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI BANDUNG BARAT 2025-2030", keluarga: "AHMAD", relasi: [
-              { kerabat: "RAFFI AHMAD", hubungan: "IPAR", jabatanKerabat: "UTUSAN KHUSUS PRESIDEN RI 2024-2029", catatan: "" },
-              { kerabat: "NISYA AHMAD", hubungan: "IPAR", jabatanKerabat: "ANGGOTA DPRD JAWA BARAT 2024-2029", catatan: "" }
-            ]}
-          ]}
-        ]
-      },
-      "Sulawesi Tenggara": {
-        total: 29, menang: 10, kalah: 19, dapilCount: 12, kabKotaCount: 11, topRel: "ANAK (16 relasi)",
-        dapils: [
-          { dapil: "Kota Kendari", candidates: [
-            { nama: "SISKA KARINA IMRAN", jk: "P", thn: 1988, jabatanCalon: "WALIKOTA", status: "MENANG", jabatanSaatIni: "WALIKOTA KENDARI 2025-2030", keluarga: "IMRAN", relasi: [
-              { kerabat: "IMRAN", hubungan: "ANAK", jabatanKerabat: "BUPATI KONAWE SELATAN 2 periode; ANGGOTA DPR-RI", catatan: "" },
-              { kerabat: "ADRIATMA DWI PUTRA", hubungan: "SUAMI/ISTRI", jabatanKerabat: "WALIKOTA KENDARI 2017-2018", catatan: "" },
-              { kerabat: "ASRUN", hubungan: "MENANTU", jabatanKerabat: "WALIKOTA KENDARI 2007-2017", catatan: "PERTAUTAN DUA DINASTI KENDARI & KONSEL" }
-            ]}
-          ]}
-        ]
-      },
-      "Sumatera Selatan": {
-        total: 28, menang: 12, kalah: 16, dapilCount: 16, kabKotaCount: 15, topRel: "ADIK/KAKAK (22 relasi)",
-        dapils: [
-          { dapil: "Prov. Sumatera Selatan", candidates: [
-            { nama: "HERMAN DERU", jk: "L", thn: 1967, jabatanCalon: "GUBERNUR", status: "MENANG", jabatanSaatIni: "GUBERNUR SUMATERA SELATAN 2025-2030", keluarga: "DERU", relasi: [
-              { kerabat: "PERCHA LEANPURI", hubungan: "ORANG TUA", jabatanKerabat: "ANGGOTA DPD/DPR RI", catatan: "" },
-              { kerabat: "LANOSIN HAMZAH", hubungan: "ADIK/KAKAK", jabatanKerabat: "BUPATI OKU TIMUR 2021-2030", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Ogan Ilir", candidates: [
-            { nama: "PANCA WIJAYA AKBAR", jk: "L", thn: 1991, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI OGAN ILIR 2025-2030", keluarga: "MAWARDI YAHYA", relasi: [
-              { kerabat: "MAWARDI YAHYA", hubungan: "ANAK", jabatanKerabat: "BUPATI OGAN ILIR 2005-2015; WAKIL GUBERNUR SUMSEL 2018-2023", catatan: "" }
-            ]}
-          ]}
-        ]
-      },
+      "Jawa Timur": { total: 58, menang: 25, kalah: 33, dapilCount: 31, kabKotaCount: 30, topRel: "ANAK (25 relasi)", dapils: [] },
+      "Sulawesi Selatan": { total: 58, menang: 24, kalah: 34, dapilCount: 23, kabKotaCount: 22, topRel: "ANAK (27 relasi)", dapils: [] },
+      "Jawa Tengah": { total: 41, menang: 22, kalah: 19, dapilCount: 24, kabKotaCount: 23, topRel: "ANAK (17 relasi)", dapils: [] },
+      "Sumatera Utara": { total: 36, menang: 13, kalah: 23, dapilCount: 25, kabKotaCount: 24, topRel: "ANAK (14 relasi)", dapils: [] },
+      "Jawa Barat": { total: 30, menang: 9, kalah: 21, dapilCount: 19, kabKotaCount: 18, topRel: "ANAK (10 relasi)", dapils: [] },
+      "Sulawesi Tenggara": { total: 29, menang: 10, kalah: 19, dapilCount: 12, kabKotaCount: 11, topRel: "ANAK (16 relasi)", dapils: [] },
+      "Sumatera Selatan": { total: 28, menang: 12, kalah: 16, dapilCount: 16, kabKotaCount: 15, topRel: "ADIK/KAKAK (22 relasi)", dapils: [] },
       "Sulawesi Utara": { total: 27, menang: 12, kalah: 15, dapilCount: 14, kabKotaCount: 13, topRel: "ANAK (9 relasi)", dapils: [] },
       "Nusa Tenggara Barat": { total: 23, menang: 7, kalah: 16, dapilCount: 10, kabKotaCount: 9, topRel: "ADIK/KAKAK (9 relasi)", dapils: [] },
       "Sulawesi Tengah": { total: 23, menang: 7, kalah: 16, dapilCount: 13, kabKotaCount: 12, topRel: "ANAK (9 relasi)", dapils: [] },
       "Kalimantan Tengah": { total: 22, menang: 7, kalah: 15, dapilCount: 10, kabKotaCount: 9, topRel: "ADIK/KAKAK (13 relasi)", dapils: [] },
       "Sumatera Barat": { total: 21, menang: 10, kalah: 11, dapilCount: 16, kabKotaCount: 15, topRel: "SUAMI/ISTRI (8 relasi)", dapils: [] },
-      "Lampung": {
-        total: 21, menang: 10, kalah: 11, dapilCount: 14, kabKotaCount: 13, topRel: "SUAMI/ISTRI (9 relasi)",
-        dapils: [
-          { dapil: "Prov. Lampung", candidates: [
-            { nama: "RAHMAT MIRZANI DJAUSAL", jk: "L", thn: 1980, jabatanCalon: "GUBERNUR", status: "MENANG", jabatanSaatIni: "GUBERNUR LAMPUNG 2025-2030", keluarga: "DJAUSAL", relasi: [
-              { kerabat: "MIRZA DJAUSAL", hubungan: "ANAK", jabatanKerabat: "TOKOH POLITIK / DPRD LAMPUNG", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Lampung Selatan", candidates: [
-            { nama: "RADITYO EGI PRATAMA", jk: "L", thn: 1988, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI LAMPUNG SELATAN 2025-2030", keluarga: "ZULKIFLI HASAN", relasi: [
-              { kerabat: "ZULKIFLI HASAN", hubungan: "MENANTU", jabatanKerabat: "KETUA MPR RI 2014-2019; MENKO PANGAN 2024-2029", catatan: "" },
-              { kerabat: "ZITA ANJANI", hubungan: "SUAMI/ISTRI", jabatanKerabat: "WAKIL KETUA DPRD DKI JAKARTA 2019-2024", catatan: "" }
-            ]}
-          ]}
-        ]
-      },
-      "Aceh": {
-        total: 21, menang: 7, kalah: 14, dapilCount: 12, kabKotaCount: 12, topRel: "ADIK/KAKAK (8 relasi)",
-        dapils: [
-          { dapil: "Kab. Aceh Besar", candidates: [
-            { nama: "MAWARDI ALI", jk: "L", thn: 1969, jabatanCalon: "BUPATI", status: "KALAH", jabatanSaatIni: "BUPATI ACEH BESAR 2025-2030", keluarga: "ALI", relasi: [
-              { kerabat: "MAULANA AKHBAR", hubungan: "ORANG TUA", jabatanKerabat: "ANGGOTA DPRK ACEH BESAR 2024-2029", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Aceh Selatan", candidates: [
-            { nama: "MIRWAN", jk: "L", thn: 1975, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI ACEH SELATAN 2025-2030", keluarga: "HASANUDDIN", relasi: [
-              { kerabat: "JUFRI HASANUDDIN", hubungan: "KEPONAKAN", jabatanKerabat: "BUPATI ACEH BARAT DAYA 2012-2017", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Aceh Singkil", candidates: [
-            { nama: "SAFRIADI OYON", jk: "L", thn: 1965, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI ACEH SINGKIL 2025-2030", keluarga: "MANIK", relasi: [
-              { kerabat: "MULYADI MANIK", hubungan: "ADIK/KAKAK", jabatanKerabat: "KETUA DPRK ACEH SINGKIL 2012-2017; WAKIL KETUA DPRK ACEH SINGKIL 2019-2024", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Aceh Tenggara", candidates: [
-            { nama: "SALIM FAKHRY", jk: "L", thn: 1968, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI ACEH TENGGARA 2025-2030", keluarga: "FAKHRY", relasi: [
-              { kerabat: "PUTRI NIKEN JILE", hubungan: "ORANG TUA", jabatanKerabat: "ANGGOTA DPRK ACEH TENGGARA 2024-2029", catatan: "KASUS DUA DINASTI BERSATU DAN MENANG" }
-            ]},
-            { nama: "HERI AL HILAL", jk: "L", thn: 1978, jabatanCalon: "WAKIL BUPATI", status: "MENANG", jabatanSaatIni: "WAKIL BUPATI ACEH TENGGARA 2025-2030", keluarga: "BERUH", relasi: [
-              { kerabat: "HASANUDIN BERUH", hubungan: "ANAK", jabatanKerabat: "BUPATI ACEH TENGGARA 2012-2017", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kota Banda Aceh", candidates: [
-            { nama: "ILLIZA SAADUDDIN DJAMAL", jk: "P", thn: 1973, jabatanCalon: "WALIKOTA", status: "MENANG", jabatanSaatIni: "WALIKOTA BANDA ACEH 2025-2030", keluarga: "SA'ADUDDIN DJAMAL", relasi: [
-              { kerabat: "ILMIZA SA'ADUDDIN DJAMAL", hubungan: "ADIK/KAKAK", jabatanKerabat: "ANGGOTA DPRK BANDA ACEH 2014-2024; ANGGOTA DPRA ACEH 2024-2029", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Nagan Raya", candidates: [
-            { nama: "TEUKU RAJA KEUMANGAN", jk: "L", thn: 1967, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI NAGAN RAYA 2025-2030", keluarga: "ZULKARNAIN (AMPON BANG)", relasi: [
-              { kerabat: "TEUKU ZULKARNAIN", hubungan: "ADIK/KAKAK", jabatanKerabat: "BUPATI NAGAN RAYA 2007-2017; ANGGOTA DPR-RI 2024-2029", catatan: "KASUS DOMINASI DINASTI" },
-              { kerabat: "KELIMAH", hubungan: "IPAR", jabatanKerabat: "KETUA DPRK NAGAN RAYA 2014-2019", catatan: "ISTRI TEUKU ZULKARNAIN" }
-            ]}
-          ]},
-          { dapil: "Kab. Bener Meriah", candidates: [
-            { nama: "TAGORE ABUBAKAR", jk: "L", thn: 1954, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI BENER MERIAH 2025-2030", keluarga: "ABUBAKAR", relasi: [
-              { kerabat: "SHABELA ABUBAKAR", hubungan: "ADIK/KAKAK", jabatanKerabat: "BUPATI ACEH TENGAH 2017-2022", catatan: "" }
-            ]}
-          ]}
-        ]
-      },
+      "Lampung": { total: 21, menang: 10, kalah: 11, dapilCount: 14, kabKotaCount: 13, topRel: "SUAMI/ISTRI (9 relasi)", dapils: [] },
+      "Aceh": { total: 21, menang: 7, kalah: 14, dapilCount: 12, kabKotaCount: 12, topRel: "ADIK/KAKAK (8 relasi)", dapils: [] },
       "Nusa Tenggara Timur": { total: 20, menang: 4, kalah: 16, dapilCount: 14, kabKotaCount: 13, topRel: "ANAK (10 relasi)", dapils: [] },
       "Kalimantan Selatan": { total: 18, menang: 6, kalah: 12, dapilCount: 11, kabKotaCount: 10, topRel: "SUAMI/ISTRI (8 relasi)", dapils: [] },
-      "Kalimantan Timur": {
-        total: 17, menang: 9, kalah: 8, dapilCount: 10, kabKotaCount: 9, topRel: "ADIK/KAKAK (8 relasi)",
-        dapils: [
-          { dapil: "Prov. Kalimantan Timur", candidates: [
-            { nama: "RUDY MAS'UD", jk: "L", thn: 1981, jabatanCalon: "GUBERNUR", status: "MENANG", jabatanSaatIni: "GUBERNUR KALIMANTAN TIMUR 2025-2030", keluarga: "MAS'UD", relasi: [
-              { kerabat: "SYARIFAH SURAIDAH", hubungan: "SUAMI/ISTRI", jabatanKerabat: "ANGGOTA DPR-RI 2024-2029", catatan: "DINASTI BANI MAS'UD KALTIM" },
-              { kerabat: "HASANUDDIN MAS'UD", hubungan: "ADIK/KAKAK", jabatanKerabat: "KETUA DPRD KALIMANTAN TIMUR", catatan: "" },
-              { kerabat: "RAHMAWATI MAS'UD", hubungan: "ADIK/KAKAK", jabatanKerabat: "WALIKOTA BALIKPAPAN 2021-2030", catatan: "" },
-              { kerabat: "ABDUL GAFUR MAS'UD", hubungan: "ADIK/KAKAK", jabatanKerabat: "BUPATI PENAJAM PASER UTARA 2018-2022", catatan: "" }
-            ]}
-          ]}
-        ]
-      },
+      "Kalimantan Timur": { total: 17, menang: 9, kalah: 8, dapilCount: 10, kabKotaCount: 9, topRel: "ADIK/KAKAK (8 relasi)", dapils: [] },
       "Riau": { total: 16, menang: 6, kalah: 10, dapilCount: 10, kabKotaCount: 9, topRel: "ORANG TUA (9 relasi)", dapils: [] },
       "Jambi": { total: 14, menang: 8, kalah: 6, dapilCount: 9, kabKotaCount: 8, topRel: "ANAK (6 relasi)", dapils: [] },
       "Gorontalo": { total: 14, menang: 5, kalah: 9, dapilCount: 6, kabKotaCount: 5, topRel: "ADIK/KAKAK (9 relasi)", dapils: [] },
       "Bengkulu": { total: 13, menang: 6, kalah: 7, dapilCount: 7, kabKotaCount: 6, topRel: "ADIK/KAKAK (7 relasi)", dapils: [] },
       "Kepulauan Bangka Belitung": { total: 13, menang: 5, kalah: 8, dapilCount: 7, kabKotaCount: 6, topRel: "ADIK/KAKAK (9 relasi)", dapils: [] },
       "Sulawesi Barat": { total: 12, menang: 6, kalah: 6, dapilCount: 6, kabKotaCount: 5, topRel: "ADIK/KAKAK (11 relasi)", dapils: [] },
-      "Banten": {
-        total: 11, menang: 6, kalah: 5, dapilCount: 8, kabKotaCount: 7, topRel: "ADIK/KAKAK (10 relasi)",
-        dapils: [
-          { dapil: "Prov. Banten", candidates: [
-            { nama: "AIRIN RACHMI DIANY", jk: "P", thn: 1976, jabatanCalon: "GUBERNUR", status: "KALAH", jabatanSaatIni: "TIDAK ADA", keluarga: "CHOSIYAH / WARDOYO", relasi: [
-              { kerabat: "RATU ATUT CHOSIYAH", hubungan: "IPAR", jabatanKerabat: "GUBERNUR BANTEN 2007-2015", catatan: "DINASTI RATU ATUT BANTEN" },
-              { kerabat: "TUBAGUS CHAERI WARDOYO", hubungan: "SUAMI/ISTRI", jabatanKerabat: "TOKOH POLITIK BANTEN", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kab. Serang", candidates: [
-            { nama: "RATU RACHMATUZAKIYAH", jk: "P", thn: 1978, jabatanCalon: "BUPATI", status: "MENANG", jabatanSaatIni: "BUPATI SERANG 2025-2030", keluarga: "YANDRI SUSANTO", relasi: [
-              { kerabat: "YANDRI SUSANTO", hubungan: "SUAMI/ISTRI", jabatanKerabat: "WAKIL KETUA MPR RI 2022-2024; MENTERI DESA PDTT 2024-2029", catatan: "" }
-            ]}
-          ]},
-          { dapil: "Kota Tangerang Selatan", candidates: [
-            { nama: "BENYAMIN DAVNIE", jk: "L", thn: 1958, jabatanCalon: "WALIKOTA", status: "MENANG", jabatanSaatIni: "WALIKOTA TANGERANG SELATAN 2025-2030", keluarga: "DAVNIE", relasi: [
-              { kerabat: "PILAR SAGA ICHSAN", hubungan: "WAKIL / KEkERABATAN", jabatanKerabat: "WAKIL WALIKOTA TANGSEL (KEPONAKAN RATU ATUT)", catatan: "" }
-            ]},
-            { nama: "PILAR SAGA ICHSAN", jk: "L", thn: 1991, jabatanCalon: "WAKIL WALIKOTA", status: "MENANG", jabatanSaatIni: "WAKIL WALIKOTA TANGERANG SELATAN 2025-2030", keluarga: "CHOSIYAH", relasi: [
-              { kerabat: "RATU TATU CHASANAH", hubungan: "ANAK", jabatanKerabat: "BUPATI SERANG 2016-2025", catatan: "" },
-              { kerabat: "RATU ATUT CHOSIYAH", hubungan: "KEPONAKAN", jabatanKerabat: "GUBERNUR BANTEN 2007-2015", catatan: "" }
-            ]}
-          ]}
-        ]
-      },
+      "Banten": { total: 11, menang: 6, kalah: 5, dapilCount: 8, kabKotaCount: 7, topRel: "ADIK/KAKAK (10 relasi)", dapils: [] },
       "Bali": { total: 11, menang: 6, kalah: 5, dapilCount: 7, kabKotaCount: 6, topRel: "ORANG TUA (6 relasi)", dapils: [] },
       "Kalimantan Barat": { total: 11, menang: 6, kalah: 5, dapilCount: 8, kabKotaCount: 7, topRel: "SUAMI/ISTRI (5 relasi)", dapils: [] },
       "Kepulauan Riau": { total: 8, menang: 4, kalah: 4, dapilCount: 6, kabKotaCount: 5, topRel: "SUAMI/ISTRI (4 relasi)", dapils: [] },
-      "Maluku Utara": {
-        total: 8, menang: 4, kalah: 4, dapilCount: 4, kabKotaCount: 3, topRel: "ADIK/KAKAK (20 relasi)",
-        dapils: [
-          { dapil: "Prov. Maluku Utara", candidates: [
-            { nama: "SHERLY TJOANDA", jk: "P", thn: 1982, jabatanCalon: "GUBERNUR", status: "MENANG", jabatanSaatIni: "GUBERNUR MALUKU UTARA 2025-2030", keluarga: "LAOS", relasi: [
-              { kerabat: "BENNY LAOS", hubungan: "SUAMI/ISTRI", jabatanKerabat: "BUPATI PULAU MOROTAI 2017-2022", catatan: "MENGGANTIKAN SUAMI YANG WAFAT SAAT KAMPANYE" }
-            ]}
-          ]}
-        ]
-      },
+      "Maluku Utara": { total: 8, menang: 4, kalah: 4, dapilCount: 4, kabKotaCount: 3, topRel: "ADIK/KAKAK (20 relasi)", dapils: [] },
       "Papua Barat Daya": { total: 6, menang: 0, kalah: 6, dapilCount: 4, kabKotaCount: 3, topRel: "ADIK/KAKAK (3 relasi)", dapils: [] },
       "Maluku": { total: 4, menang: 0, kalah: 4, dapilCount: 4, kabKotaCount: 4, topRel: "SUAMI/ISTRI (3 relasi)", dapils: [] },
-      "DKI Jakarta": {
-        total: 3, menang: 1, kalah: 2, dapilCount: 1, kabKotaCount: 0, topRel: "ORANG TUA (2 relasi)",
-        dapils: [
-          { dapil: "Prov. DKI Jakarta", candidates: [
-            { nama: "PRAMONO ANUNG WIBOWO", jk: "L", thn: 1963, jabatanCalon: "GUBERNUR", status: "MENANG", jabatanSaatIni: "GUBERNUR DKI JAKARTA 2025-2030", keluarga: "PRAMONO", relasi: [
-              { kerabat: "HANINDHITO HIMAWAN PRAMANA", hubungan: "ORANG TUA", jabatanKerabat: "BUPATI KEDIRI 2021-2030", catatan: "" }
-            ]}
-          ]}
-        ]
-      },
+      "DKI Jakarta": { total: 3, menang: 1, kalah: 2, dapilCount: 1, kabKotaCount: 0, topRel: "ORANG TUA (2 relasi)", dapils: [] },
       "DI Yogyakarta": { total: 3, menang: 1, kalah: 2, dapilCount: 3, kabKotaCount: 3, topRel: "SUAMI/ISTRI (2 relasi)", dapils: [] },
       "Kalimantan Utara": { total: 3, menang: 1, kalah: 2, dapilCount: 2, kabKotaCount: 1, topRel: "SUAMI/ISTRI (3 relasi)", dapils: [] },
       "Papua": { total: 2, menang: 1, kalah: 1, dapilCount: 2, kabKotaCount: 2, topRel: "SUAMI/ISTRI (1 relasi)", dapils: [] },
@@ -595,26 +303,27 @@
     };
 
     let PROVINCE_DB = JSON.parse(JSON.stringify(INITIAL_PROVINCE_DATA));
-    let currentMetric = 'all'; // 'all' atau 'win'
+    let currentMetric = 'all';
     let selectedProvince = 'Jawa Timur';
+    let hoveredProvince = null;
     let modalFilter = 'ALL';
-    let myChart = null;
-    let geoJsonData = null;
 
-    // Normalisasi nama provinsi di berbagai sumber GeoJSON Indonesia ke standar 38 Provinsi
+    // Normalisasi nama provinsi dari berbagai versi GeoJSON Indonesia
     function normalizeGeoProvinceName(rawName) {
       if (!rawName) return "";
-      const s = rawName.toUpperCase().trim();
+      const s = String(rawName).toUpperCase().trim().replace(/\s+/g, " ");
       const map = {
-        "DI. ACEH": "Aceh", "NANGGROE ACEH DARUSSALAM": "Aceh", "ACEH": "Aceh",
-        "SUMATERA UTARA": "Sumatera Utara", "SUMATERA BARAT": "Sumatera Barat",
-        "RIAU": "Riau", "JAMBI": "Jambi", "SUMATERA SELATAN": "Sumatera Selatan",
+        "DI. ACEH": "Aceh", "NANGGROE ACEH DARUSSALAM": "Aceh", "ACEH": "Aceh", "DAERAH ISTIMEWA ACEH": "Aceh",
+        "SUMATERA UTARA": "Sumatera Utara", "SUMATRA UTARA": "Sumatera Utara",
+        "SUMATERA BARAT": "Sumatera Barat", "SUMATRA BARAT": "Sumatera Barat",
+        "RIAU": "Riau", "JAMBI": "Jambi",
+        "SUMATERA SELATAN": "Sumatera Selatan", "SUMATRA SELATAN": "Sumatera Selatan",
         "BENGKULU": "Bengkulu", "LAMPUNG": "Lampung",
-        "BANGKA BELITUNG": "Kepulauan Bangka Belitung", "KEPULAUAN BANGKA BELITUNG": "Kepulauan Bangka Belitung",
-        "KEPULAUAN RIAU": "Kepulauan Riau",
-        "DKI JAKARTA": "DKI Jakarta", "JAKARTA RAYA": "DKI Jakarta",
+        "BANGKA BELITUNG": "Kepulauan Bangka Belitung", "KEPULAUAN BANGKA BELITUNG": "Kepulauan Bangka Belitung", "KEP. BANGKA BELITUNG": "Kepulauan Bangka Belitung",
+        "KEPULAUAN RIAU": "Kepulauan Riau", "KEP. RIAU": "Kepulauan Riau",
+        "DKI JAKARTA": "DKI Jakarta", "JAKARTA RAYA": "DKI Jakarta", "DAERAH KHUSUS IBUKOTA JAKARTA": "DKI Jakarta", "JAKARTA": "DKI Jakarta",
         "JAWA BARAT": "Jawa Barat", "JAWA TENGAH": "Jawa Tengah",
-        "DAERAH ISTIMEWA YOGYAKARTA": "DI Yogyakarta", "DI YOGYAKARTA": "DI Yogyakarta", "YOGYAKARTA": "DI Yogyakarta",
+        "DAERAH ISTIMEWA YOGYAKARTA": "DI Yogyakarta", "DI YOGYAKARTA": "DI Yogyakarta", "YOGYAKARTA": "DI Yogyakarta", "D.I. YOGYAKARTA": "DI Yogyakarta",
         "JAWA TIMUR": "Jawa Timur", "BANTEN": "Banten", "BALI": "Bali",
         "NUSA TENGGARA BARAT": "Nusa Tenggara Barat", "NUSA TENGGARA TIMUR": "Nusa Tenggara Timur",
         "KALIMANTAN BARAT": "Kalimantan Barat", "KALIMANTAN TENGAH": "Kalimantan Tengah",
@@ -624,7 +333,7 @@
         "SULAWESI SELATAN": "Sulawesi Selatan", "SULAWESI TENGGARA": "Sulawesi Tenggara",
         "GORONTALO": "Gorontalo", "SULAWESI BARAT": "Sulawesi Barat",
         "MALUKU": "Maluku", "MALUKU UTARA": "Maluku Utara",
-        "PAPUA": "Papua", "IRIAN JAYA TIMUR": "Papua",
+        "PAPUA": "Papua", "IRIAN JAYA TIMUR": "Papua", "IRIAN JAYA": "Papua",
         "PAPUA BARAT": "Papua Barat", "IRIAN JAYA BARAT": "Papua Barat",
         "PAPUA BARAT DAYA": "Papua Barat Daya", "PAPUA SELATAN": "Papua Selatan",
         "PAPUA TENGAH": "Papua Tengah", "PAPUA PEGUNUNGAN": "Papua Pegunungan"
@@ -633,7 +342,423 @@
     }
 
     // =========================================================================
-    // 2. PARSER OTOMATIS UNTUK FILE EXCEL "2025 07 13 Hubungan Kekerabatan.xlsx"
+    // 2. MESIN RENDER PETA DIORAMA 3D (HTML5 CANVAS 2.5D EXTRUSION)
+    // =========================================================================
+    const canvas = document.getElementById('map-canvas');
+    const ctx = canvas.getContext('2d');
+    let parsedPolygons = []; // Array of { provName, ring: [[lon,lat],...], centroidLat, centroidLon }
+
+    // Parameter kamera peta (mendukung drag & zoom)
+    let cam = {
+      zoom: 1.0,
+      panX: 0,
+      panY: -22,
+      isDragging: false,
+      startX: 0,
+      startY: 0,
+      moved: false
+    };
+
+    function resetMapView() {
+      cam.zoom = 1.0;
+      cam.panX = 0;
+      cam.panY = -22;
+      drawDioramaMap();
+    }
+
+    function resizeCanvas() {
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      drawDioramaMap();
+    }
+
+    // Konversi koordinat (lon, lat) menjadi titik layar (x, y) dengan perspektif miring diorama
+    function projectLonLat(lon, lat) {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const baseScale = Math.min(w * 0.78 / 46.5, h * 0.65 / 17.5) * cam.zoom;
+      const tiltY = 0.68; // Kemiringan isometrik diorama seperti referensi
+      const centerLon = 118.0;
+      const centerLat = -2.2;
+
+      const x = (w * 0.5) + cam.panX + (lon - centerLon) * baseScale;
+      const y = (h * 0.47) + cam.panY - (lat - centerLat) * baseScale * tiltY;
+      return [x, y];
+    }
+
+    function getExtrusionHeight(provName) {
+      const val = getMetricValue(provName);
+      const maxVal = currentMetric === 'win' ? 25 : 58;
+      if (val <= 0) return 4 * cam.zoom;
+      return (6 + (val / maxVal) * 58) * cam.zoom;
+    }
+
+    // Bangun poligon cadangan instan agar peta tidak pernah kosong saat jaringan lambat
+    function buildFallbackPolygons() {
+      const list = [];
+      Object.entries(PROV_COORDS).forEach(([provName, [lon, lat]]) => {
+        const dx = 1.15, dy = 0.75;
+        const ring = [
+          [lon - dx, lat - dy],
+          [lon + dx, lat - dy],
+          [lon + dx * 0.85, lat + dy],
+          [lon - dx * 0.85, lat + dy]
+        ];
+        list.push({ provName, ring, centroidLon: lon, centroidLat: lat });
+      });
+      return list;
+    }
+
+    // Ekstrak seluruh cincin poligon dari GeoJSON
+    function extractPolygonsFromGeoJSON(geojson) {
+      const list = [];
+      if (!geojson || !geojson.features) return list;
+
+      geojson.features.forEach(f => {
+        const p = f.properties || {};
+        const rawName = p.Propinsi || p.PROVINSI || p.name || p.NAME_1 || p.state || p.provinsi || "";
+        const provName = normalizeGeoProvinceName(rawName);
+        if (!f.geometry) return;
+
+        const geomType = f.geometry.type;
+        const coords = f.geometry.coordinates;
+
+        const processRing = (ring) => {
+          if (!ring || ring.length < 3) return;
+          // Sederhanakan titik yang terlalu rapat agar render 60fps sangat mulus
+          const step = ring.length > 250 ? Math.ceil(ring.length / 180) : 1;
+          constpts = [];
+          let sumLon = 0, sumLat = 0;
+          for (let i = 0; i < ring.length; i += step) {
+            const pt = ring[i];
+            constPtsPush(pt);
+          }
+          function constPtsPush(pt) {
+            constpts.push([pt[0], pt[1]]);
+            sumLon += pt[0];
+            sumLat += pt[1];
+          }
+          if (constpts.length >= 3) {
+            list.push({
+              provName,
+              ring: constpts,
+              centroidLon: sumLon / constpts.length,
+              centroidLat: sumLat / constpts.length
+            });
+          }
+        };
+
+        if (geomType === "Polygon") {
+          processRing(coords[0]);
+        } else if (geomType === "MultiPolygon") {
+          coords.forEach(poly => {
+            if (poly && poly[0]) processRing(poly[0]);
+          });
+        }
+      });
+
+      // Urutkan dari Utara ke Selatan (centroidLat menurun) untuk algoritma Painter 3D yang akurat
+      list.sort((a, b) => b.centroidLat - a.centroidLat);
+      return list;
+    }
+
+    // Gambar peta diorama 3D ke kanvas
+    function drawDioramaMap() {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      ctx.clearRect(0, 0, w, h);
+
+      const polys = parsedPolygons.length > 0 ? parsedPolygons : buildFallbackPolygons();
+
+      // 1. Gambar bayangan dasar pulau di lantai peta
+      polys.forEach(poly => {
+        const screenPts = poly.ring.map(([lon, lat]) => projectLonLat(lon, lat));
+        ctx.beginPath();
+        screenPts.forEach(([x, y], idx) => {
+          if (idx === 0) ctx.moveTo(x + 3, y + 6);
+          else ctx.lineTo(x + 3, y + 6);
+        });
+        ctx.closePath();
+        ctx.fillStyle = "rgba(28, 25, 23, 0.09)";
+        ctx.fill();
+      });
+
+      // 2. Gambar ekstrusi 3D (dinding samping + atap provinsi) dari Utara ke Selatan
+      polys.forEach(poly => {
+        const pName = poly.provName;
+        const val = getMetricValue(pName);
+        const extH = getExtrusionHeight(pName);
+        const isSel = pName === selectedProvince;
+        const isHov = pName === hoveredProvince;
+
+        // Palet warna persis seperti gambar referensi Peta Ekonomi Indonesia
+        let topColor = "#9ca3af";
+        let wallColor = "#4b5563";
+        const ratio = val / (currentMetric === 'win' ? 25 : 58);
+
+        if (val === 0) {
+          topColor = "#d6d3d1";
+          wallColor = "#a8a29e";
+        } else if (ratio >= 0.60) {
+          topColor = "#292524";
+          wallColor = "#1c1917";
+        } else if (ratio >= 0.35) {
+          topColor = "#44403c";
+          wallColor = "#292524";
+        } else if (ratio >= 0.18) {
+          topColor = "#6b7280";
+          wallColor = "#374151";
+        } else {
+          topColor = "#9ca3af";
+          wallColor = "#6b7280";
+        }
+
+        if (isSel) {
+          topColor = "#ea580c";  // Oranye terang di atap provinsi terpilih
+          wallColor = "#9a3412"; // Merah bata gelap di dinding 3D provinsi terpilih
+        } else if (isHov) {
+          topColor = "#fb923c";
+          wallColor = "#c2410c";
+        }
+
+        const basePts = poly.ring.map(([lon, lat]) => projectLonLat(lon, lat));
+
+        // 2a. Gambar dinding vertikal ekstrusi 3D
+        ctx.fillStyle = wallColor;
+        ctx.strokeStyle = wallColor;
+        ctx.lineWidth = 0.8;
+        for (let i = 0; i < basePts.length; i++) {
+          const [x1, y1] = basePts[i];
+          const [x2, y2] = basePts[(i + 1) % basePts.length];
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.lineTo(x2, y2 - extH);
+          ctx.lineTo(x1, y1 - extH);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
+
+        // 2b. Gambar permukaan atas (atap 3D provinsi)
+        ctx.beginPath();
+        basePts.forEach(([x, y], idx) => {
+          if (idx === 0) ctx.moveTo(x, y - extH);
+          else ctx.lineTo(x, y - extH);
+        });
+        ctx.closePath();
+        ctx.fillStyle = topColor;
+        ctx.fill();
+        ctx.strokeStyle = isSel ? "#ffedd5" : "rgba(251, 250, 248, 0.75)";
+        ctx.lineWidth = isSel ? 1.5 : 0.7;
+        ctx.stroke();
+      });
+
+      // 3. Gambar Pin Nomor Top 5 Provinsi & Label Melayang Provinsi Terpilih (Persis Referensi)
+      const sorted = getSortedProvinces();
+      const top5 = sorted.slice(0, 5);
+
+      top5.forEach((pName, idx) => {
+        if (pName === selectedProvince) return; // Provinsi terpilih menggunakan pill oranye
+        const coord = PROV_COORDS[pName];
+        if (!coord) return;
+        const [bx, by] = projectLonLat(coord[0], coord[1]);
+        const extH = getExtrusionHeight(pName);
+        const pinY = by - extH - 14;
+
+        // Garis tangkai pin kecil
+        ctx.beginPath();
+        ctx.moveTo(bx, by - extH);
+        ctx.lineTo(bx, pinY);
+        ctx.strokeStyle = "#1c1917";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Lingkaran hitam nomor peringkat
+        ctx.beginPath();
+        ctx.arc(bx, pinY - 10, 11, 0, Math.PI * 2);
+        ctx.fillStyle = "#1c1917";
+        ctx.fill();
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "800 11px 'Plus Jakarta Sans', sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(String(idx + 1), bx, pinY - 10);
+      });
+
+      // Label Pill Oranye di atas Provinsi Terpilih
+      if (selectedProvince && PROV_COORDS[selectedProvince]) {
+        const [sx, sy] = projectLonLat(PROV_COORDS[selectedProvince][0], PROV_COORDS[selectedProvince][1]);
+        const extH = getExtrusionHeight(selectedProvince);
+        const val = getMetricValue(selectedProvince);
+        const labelText = `${selectedProvince} · ${val} ${currentMetric === 'win' ? 'Terpilih' : 'Kandidat'}`;
+
+        ctx.font = "800 12px 'Plus Jakarta Sans', sans-serif";
+        const textW = ctx.measureText(labelText).width;
+        const pillW = textW + 24;
+        const pillH = 28;
+        const pillX = sx - pillW / 2;
+        const pillY = sy - extH - 42;
+
+        // Tangkai penghubung
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - extH - 2);
+        ctx.lineTo(sx, pillY + pillH);
+        ctx.strokeStyle = "#c2410c";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Kotak pill oranye
+        ctx.beginPath();
+        ctx.roundRect(pillX, pillY, pillW, pillH, 8);
+        ctx.fillStyle = "#c2410c";
+        ctx.fill();
+        ctx.strokeStyle = "#ffedd5";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        ctx.fillStyle = "#ffffff";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(labelText, sx, pillY + pillH / 2);
+      }
+    }
+
+    // Fungsi cek apakah titik kursor berada di dalam poligon provinsi
+    function pointInPolygon(px, py, pts) {
+      let inside = false;
+      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        const xi = pts[i][0], yi = pts[i][1];
+        const xj = pts[j][0], yj = pts[j][1];
+        const intersect = ((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / ((yj - yi) || 1e-9) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    function detectProvinceAtPoint(mx, my) {
+      const polys = parsedPolygons.length > 0 ? parsedPolygons : buildFallbackPolygons();
+      // Cek dari urutan depan (Selatan) ke belakang (Utara)
+      for (let i = polys.length - 1; i >= 0; i--) {
+        const poly = polys[i];
+        const extH = getExtrusionHeight(poly.provName);
+        const topPts = poly.ring.map(([lon, lat]) => {
+          const [x, y] = projectLonLat(lon, lat);
+          return [x, y - extH];
+        });
+        if (pointInPolygon(mx, my, topPts)) {
+          return poly.provName;
+        }
+        const basePts = poly.ring.map(([lon, lat]) => projectLonLat(lon, lat));
+        if (pointInPolygon(mx, my, basePts)) {
+          return poly.provName;
+        }
+      }
+      return null;
+    }
+
+    // Interaksi Mouse pada Kanvas Peta
+    canvas.addEventListener('mousedown', (e) => {
+      cam.isDragging = true;
+      cam.moved = false;
+      cam.startX = e.clientX - cam.panX;
+      cam.startY = e.clientY - cam.panY;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      const tooltip = document.getElementById('map-tooltip');
+      if (cam.isDragging) {
+        const dx = (e.clientX - cam.startX) - cam.panX;
+        const dy = (e.clientY - cam.startY) - cam.panY;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) cam.moved = true;
+        cam.panX = e.clientX - cam.startX;
+        cam.panY = e.clientY - cam.startY;
+        tooltip.classList.add('hidden');
+        drawDioramaMap();
+        return;
+      }
+
+      if (e.target !== canvas) {
+        tooltip.classList.add('hidden');
+        return;
+      }
+
+      const hit = detectProvinceAtPoint(e.clientX, e.clientY);
+      if (hit !== hoveredProvince) {
+        hoveredProvince = hit;
+        canvas.style.cursor = hit ? 'pointer' : 'grab';
+        drawDioramaMap();
+      }
+
+      if (hit && PROVINCE_DB[hit]) {
+        const d = PROVINCE_DB[hit];
+        tooltip.classList.remove('hidden');
+        tooltip.style.left = (e.clientX + 16) + 'px';
+        tooltip.style.top = (e.clientY + 16) + 'px';
+        tooltip.innerHTML = `
+          <div class="font-extrabold text-orange-300 text-sm mb-1">${hit}</div>
+          <div>Total Kandidat Dinasti: <b>${d.total} orang</b></div>
+          <div>Kepala Daerah Terpilih: <b class="text-emerald-300">${d.menang} menang</b></div>
+          <div>Sebaran Wilayah: <b>${d.dapilCount} Dapil</b></div>
+          <div>Relasi Dominan: <b>${d.topRel}</b></div>
+          <div class="mt-1.5 text-[11px] text-stone-300">👉 Klik untuk lihat daftar Kab/Kota & silsilah</div>
+        `;
+      } else {
+        tooltip.classList.add('hidden');
+      }
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      if (cam.isDragging && !cam.moved && e.target === canvas) {
+        const hit = detectProvinceAtPoint(e.clientX, e.clientY);
+        if (hit && PROVINCE_DB[hit]) {
+          selectProvince(hit);
+          openDetailModal();
+        }
+      }
+      cam.isDragging = false;
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      cam.zoom = Math.max(0.65, Math.min(3.0, cam.zoom * factor));
+      drawDioramaMap();
+    }, { passive: false });
+
+    // Muat GeoJSON Provinsi Indonesia dengan Multi-CDN Fallback
+    async function loadIndonesiaGeoJSON() {
+      const urls = [
+        'https://cdn.jsdelivr.net/gh/superpikar/indonesia-geojson@master/indonesia-province-simple.json',
+        'https://raw.githubusercontent.com/superpikar/indonesia-geojson/master/indonesia-province-simple.json',
+        'https://raw.githubusercontent.com/ans-4175/peta-indonesia-geojson/master/indonesia-prop.json'
+      ];
+      for (const url of urls) {
+        try {
+          const res = await fetch(url);
+          if (res.ok) {
+            const gj = await res.json();
+            const extracted = extractPolygonsFromGeoJSON(gj);
+            if (extracted.length > 10) {
+              parsedPolygons = extracted;
+              drawDioramaMap();
+              return;
+            }
+          }
+        } catch (err) {
+          // Lanjut ke CDN cadangan berikutnya
+        }
+      }
+    }
+
+    // =========================================================================
+    // 3. PARSER OTOMATIS UNTUK FILE EXCEL "2025 07 13 Hubungan Kekerabatan.xlsx"
     // =========================================================================
     function parseWorkbookToProvinceDB(workbook) {
       const sheetName = workbook.SheetNames[0];
@@ -642,7 +767,6 @@
 
       if (!rows || rows.length === 0) return;
 
-      // Forward-fill & pengelompokan sekuensial sesuai urutan asli Sheet2
       let curProv = "Aceh";
       let curDapil = "";
       let curCandidate = null;
@@ -731,7 +855,6 @@
         }
       });
 
-      // Finalisasi struktur per provinsi
       Object.keys(newDB).forEach(p => {
         const po = newDB[p];
         const dapilNames = Object.keys(po.dapilsMap);
@@ -767,7 +890,6 @@
       reader.readAsArrayBuffer(file);
     }
 
-    // Coba muat otomatis "2025 07 13 Hubungan Kekerabatan.xlsx" jika berada di direktori GitHub yang sama
     async function tryAutoLoadExcelFile() {
       try {
         const res = await fetch('./2025%2007%2013%20Hubungan%20Kekerabatan.xlsx');
@@ -777,12 +899,12 @@
           parseWorkbookToProvinceDB(wb);
         }
       } catch (err) {
-        // Gunakan data bawaan jika file belum ditaruh di server yang sama
+        // Tetap gunakan ringkasan bawaan jika file Excel belum dimuat
       }
     }
 
     // =========================================================================
-    // 3. LOGIKA PERHITUNGAN, PERINGKAT & PEMBARUAN ANTARMUKA
+    // 4. LOGIKA FILTER, TOP 5 & MODAL DETAIL KAB/KOTA
     // =========================================================================
     function getMetricValue(provName) {
       const d = PROVINCE_DB[provName];
@@ -826,7 +948,7 @@
       const menangNasional = Object.values(PROVINCE_DB).reduce((acc, x) => acc + x.menang, 0);
       const activeTotal = currentMetric === 'win' ? menangNasional : totalNasional;
 
-      // Render Top 5 Provinsi (Kiri Bawah)
+      // Render Top 5 Provinsi
       const top5El = document.getElementById('top5-container');
       const top5 = sorted.slice(0, 5);
       const maxVal = getMetricValue(top5[0]) || 1;
@@ -863,7 +985,7 @@
         `;
       }).join('');
 
-      // Render Kartu Provinsi Terpilih (Kanan Bawah)
+      // Render Kartu Provinsi Terpilih
       const selData = PROVINCE_DB[selectedProvince];
       const rank = sorted.indexOf(selectedProvince) + 1;
       const val = getMetricValue(selectedProvince);
@@ -886,105 +1008,9 @@
       document.getElementById('sel-prov-kab-count').innerText = `${selData.dapilCount} Dapil`;
       document.getElementById('btn-modal-label').innerText = `Lihat Kab/Kota & Silsilah di ${selectedProvince}`;
 
-      render3DMap();
+      drawDioramaMap();
     }
 
-    // =========================================================================
-    // 4. RENDER PETA 3D EKSTRUSI INDONESIA (APACHE ECHARTS-GL)
-    // =========================================================================
-    function render3DMap() {
-      if (!myChart || !geoJsonData) return;
-
-      const mapSeriesData = geoJsonData.features.map(f => {
-        const rawName = f.properties.Propinsi || f.properties.name || f.properties.PROVINSI || "";
-        const normName = normalizeGeoProvinceName(rawName);
-        const d = PROVINCE_DB[normName] || { total: 0, menang: 0, dapilCount: 0 };
-        const val = currentMetric === 'win' ? d.menang : d.total;
-        const isSelected = normName === selectedProvince;
-
-        // Warna gradien & highlight oranye-merah untuk provinsi terpilih (persis referensi)
-        let color = '#57534e';
-        if (val === 0) color = '#d6d3d1';
-        else if (val >= 35) color = '#292524';
-        else if (val >= 20) color = '#44403c';
-        else if (val >= 10) color = '#78716c';
-        else color = '#a8a29e';
-
-        if (isSelected) color = '#c2410c';
-
-        return {
-          name: rawName,
-          normName: normName,
-          value: val,
-          height: Math.max(1.2, val * 0.22),
-          itemStyle: {
-            color: color,
-            opacity: 1,
-            borderWidth: isSelected ? 1.8 : 0.6,
-            borderColor: isSelected ? '#ffedd5' : '#f5f5f4'
-          },
-          label: {
-            show: isSelected,
-            formatter: () => `${normName} · ${val} ${currentMetric === 'win' ? 'Terpilih' : 'Kandidat'}`,
-            textStyle: {
-              color: '#ffffff',
-              backgroundColor: '#c2410c',
-              padding: [6, 12],
-              borderRadius: 8,
-              fontSize: 12,
-              fontWeight: 'bold'
-            }
-          }
-        };
-      });
-
-      myChart.setOption({
-        tooltip: {
-          trigger: 'item',
-          backgroundColor: 'rgba(28, 25, 23, 0.95)',
-          borderColor: '#44403c',
-          textStyle: { color: '#fafaf9', fontSize: 12 },
-          formatter: (params) => {
-            const pName = params.data ? params.data.normName : normalizeGeoProvinceName(params.name);
-            const d = PROVINCE_DB[pName] || { total: 0, menang: 0, kalah: 0, dapilCount: 0, topRel: '-' };
-            return `
-              <div style="padding: 4px 6px;">
-                <div style="font-weight: 800; font-size: 14px; color: #fdba74; margin-bottom: 4px;">${pName}</div>
-                <div>Total Kandidat Dinasti: <b>${d.total} orang</b></div>
-                <div>Kepala Daerah Terpilih (Menang): <b style="color:#86efac;">${d.menang} orang</b></div>
-                <div>Cakupan Wilayah: <b>${d.dapilCount} Dapil (Kab/Kota & Prov)</b></div>
-                <div>Relasi Terbanyak: <b>${d.topRel}</b></div>
-                <div style="margin-top:6px; font-size:11px; color:#d6d3d1;">👉 Klik untuk melihat daftar Kab/Kota & silsilah</div>
-              </div>
-            `;
-          }
-        },
-        series: [{
-          type: 'map3D',
-          map: 'indonesia',
-          shading: 'lambert',
-          light: {
-            main: { intensity: 1.15, shadow: true, shadowQuality: 'high', alpha: 42, beta: 35 },
-            ambient: { intensity: 0.45 }
-          },
-          viewControl: {
-            projection: 'perspective',
-            alpha: 38,
-            beta: 8,
-            distance: 92,
-            panMouseButton: 'left',
-            rotateMouseButton: 'right',
-            center: [2, -5, 0]
-          },
-          groundPlane: { show: false },
-          data: mapSeriesData
-        }]
-      });
-    }
-
-    // =========================================================================
-    // 5. MODAL DETAIL KABUPATEN/KOTA & SILSILAH DINASTI POLITIK
-    // =========================================================================
     function openDetailModal() {
       const modal = document.getElementById('detail-modal');
       modal.classList.remove('hidden');
@@ -993,7 +1019,7 @@
       document.getElementById('modal-prov-stats').innerText =
         `${d.dapilCount} Dapil (${d.kabKotaCount} Kab/Kota) · ${d.total} Kandidat · ${d.menang} Menang`;
       document.getElementById('modal-prov-title').innerText =
-        `Daftar Kab/Kota & Penjelasan Dinasti Politik — ${selectedProvince}`;
+        `Daftar Kab/Kota & Penjelasan Dinasti Politik: ${selectedProvince}`;
       renderModalList();
     }
 
@@ -1023,10 +1049,10 @@
         container.innerHTML = `
           <div class="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center">
             <p class="text-sm font-bold text-amber-900 mb-1">
-              Data Ringkasan Provinsi ${selectedProvince}: ${d ? d.total : 0} Kandidat (${d ? d.menang : 0} Menang) di ${d ? d.dapilCount : 0} Dapil
+              Data Provinsi ${selectedProvince}: ${d ? d.total : 0} Kandidat (${d ? d.menang : 0} Menang) di ${d ? d.dapilCount : 0} Dapil
             </p>
             <p class="text-xs text-amber-800 max-w-xl mx-auto leading-relaxed">
-              Untuk menampilkan seluruh rincian 1.046 baris Kabupaten/Kota di seluruh 36 provinsi secara lengkap, silakan klik tombol <strong>"Muat Excel (.xlsx)"</strong> di pojok kanan atas dan pilih file <code>2025 07 13 Hubungan Kekerabatan.xlsx</code> Anda, atau letakkan file Excel tersebut di folder GitHub yang sama.
+              Pastikan file <code>2025 07 13 Hubungan Kekerabatan.xlsx</code> berada di repositori yang sama atau klik tombol <strong>"Muat Excel (.xlsx)"</strong> di kanan atas untuk menampilkan rincian lengkap per Kabupaten/Kota.
             </p>
           </div>
         `;
@@ -1076,7 +1102,7 @@
                   </div>
                   <p class="text-xs text-stone-600 mt-0.5">
                     Mencalonkan sebagai: <strong>${c.jabatanCalon}</strong> · Jabatan saat ini: <strong>${c.jabatanSaatIni}</strong>
-                    ${c.keluarga && c.keluarga !== '-' ? ` · Klan/Keluarga: <strong>${c.keluarga}</strong>` : ''}
+                    ${c.keluarga && c.keluarga !== '-' ? ` · Nama Keluarga: <strong>${c.keluarga}</strong>` : ''}
                   </p>
                 </div>
               </div>
@@ -1113,38 +1139,13 @@
         : `<div class="text-center py-10 text-sm text-stone-500">Tidak ada kandidat yang sesuai dengan filter pencarian.</div>`;
     }
 
-    // =========================================================================
-    // 6. INISIALISASI PETA & EVENT LISTENER
-    // =========================================================================
-    async function initDashboard() {
-      const chartDom = document.getElementById('map-container');
-      myChart = echarts.init(chartDom);
-
-      // Ambil GeoJSON Provinsi Indonesia
-      try {
-        const res = await fetch('https://raw.githubusercontent.com/superpikar/indonesia-geojson/master/indonesia-province-simple.json');
-        geoJsonData = await res.json();
-        echarts.registerMap('indonesia', geoJsonData);
-      } catch (e) {
-        console.error("Gagal memuat GeoJSON:", e);
-      }
-
-      myChart.on('click', (params) => {
-        if (params && params.name) {
-          const normName = normalizeGeoProvinceName(params.name);
-          if (PROVINCE_DB[normName]) {
-            selectProvince(normName);
-            openDetailModal();
-          }
-        }
-      });
-
-      window.addEventListener('resize', () => myChart && myChart.resize());
+    window.addEventListener('resize', resizeCanvas);
+    window.addEventListener('DOMContentLoaded', () => {
+      resizeCanvas();
       updateAllViews();
+      loadIndonesiaGeoJSON();
       tryAutoLoadExcelFile();
-    }
-
-    window.addEventListener('DOMContentLoaded', initDashboard);
+    });
   </script>
 </body>
 </html>
